@@ -20,9 +20,12 @@
 #include <string>
 #include <sstream>
 #include <cstdlib>
+#include <memory>
+#include <array>
 #include <winpr/string.h>
 #include <freerdp/log.h>
 #include <freerdp/utils/aad.h>
+#include <freerdp/build-config.h>
 
 #include "sdl_webview.hpp"
 #include "webview_impl.hpp"
@@ -52,6 +55,19 @@ static std::string from_aad_wellknown(rdpContext* context, AAD_WELLKNOWN_VALUES 
 	return val;
 }
 
+std::string webview_exec(const char* cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+    return result;
+}
+
 static BOOL sdl_webview_get_rdsaad_access_token(freerdp* instance, const char* scope,
                                                 const char* req_cnf, char** token)
 {
@@ -73,9 +89,16 @@ static BOOL sdl_webview_get_rdsaad_access_token(freerdp* instance, const char* s
 	           "&redirect_uri=" + redirect_uri;
 
 	const std::string title = "FreeRDP WebView - AAD access token";
+
 	std::string code;
-	auto rc = webview_impl_run(title, url, code);
-	if (!rc || code.empty())
+	
+	//auto rc = webview_impl_run(title, url, code);
+	std::string installpath = FREERDP_INSTALL_PREFIX;
+	std::string command = installpath + "/bin/webview_window \"" + title + "\" \"" + url + "\"";
+    code = webview_exec(command.c_str());
+
+
+	if (code.empty())
 		return FALSE;
 
 	auto token_request = "grant_type=authorization_code&code=" + code + "&client_id=" + client_id +

@@ -17,8 +17,6 @@
  * limitations under the License.
  */
 
-#include <winpr/cast.h>
-
 #include <freerdp/config.h>
 
 #include <string.h>
@@ -26,8 +24,10 @@
 #include <math.h>
 #include <limits.h>
 #include <float.h>
+#include <stdlib.h>
 
 #include <freerdp/client.h>
+#include <freerdp/build-config.h>
 
 #include <freerdp/freerdp.h>
 #include <freerdp/addin.h>
@@ -1020,6 +1020,37 @@ static char* extract_authorization_code(char* url)
 }
 
 #if defined(WITH_AAD)
+
+char* webview_exec(const char* cmd) { 
+	char buffer[128]; 
+	char* result = NULL; 
+	size_t result_len = 0; 
+	FILE* pipe = popen(cmd, "r"); 
+	if (!pipe) { 
+		perror("popen() failed!"); 
+		return NULL; 
+	} 
+	while (fgets(buffer, sizeof(buffer), pipe) != NULL) { 
+		size_t buffer_len = strlen(buffer); 
+		char* new_result = realloc(result, result_len + buffer_len + 1); 
+		if (!new_result) { 
+			free(result); perror("realloc() failed!"); 
+			pclose(pipe); return NULL; 
+		} 
+		
+		result = new_result; 
+		strcpy(result + result_len, buffer); 
+		result_len += buffer_len; 
+	} 
+	if (result) { 
+		result[result_len] = '\0'; 
+	} 
+	
+	pclose(pipe); 
+	
+	return result;
+}
+
 static BOOL client_cli_get_rdsaad_access_token(freerdp* instance, const char* scope,
                                                const char* req_cnf, char** token)
 {
@@ -1051,22 +1082,37 @@ static BOOL client_cli_get_rdsaad_access_token(freerdp* instance, const char* sc
 
 	const char* ep = freerdp_utils_aad_get_wellknown_string(instance->context,
 	                                                        AAD_WELLKNOWN_authorization_endpoint);
-	printf("Browse to: %s?client_id=%s&response_type="
-	       "code&scope=%s&redirect_uri=%s"
-	       "\n",
-	       ep, client_id, scope, redirect_uri);
-	printf("Paste redirect URL here: \n");
 
-	if (freerdp_interruptible_get_line(instance->context, &url, &size, stdin) < 0)
-		goto cleanup;
+	winpr_asprintf(&url, &size, "%s?client_id=%s&response_type=code&scope=%s&redirect_uri=%s",ep, client_id, scope, redirect_uri);
 
-	char* code = extract_authorization_code(url);
+	//#if defined(WITH_CLIENT_SDL2)
+		char* command = NULL;
+		size_t command_len = 0;
+
+		char* installpath = FREERDP_INSTALL_PREFIX;
+		winpr_asprintf(&url, &size, "%s?client_id=%s&response_type=code&scope=%s&redirect_uri=%s",ep, client_id, scope, redirect_uri);
+		winpr_asprintf(&command, &command_len, "%s/bin/webview_window \"FreeRDP AAD SSO\" \"%s\"", installpath, url);
+
+		char* code = webview_exec(command);
+
+	/*#else
+		printf("Browse to: %s?client_id=%s&response_type="
+			"code&scope=%s&redirect_uri=%s"
+			"\n",
+			ep, client_id, scope, redirect_uri);
+		printf("Paste redirect URL here: \n");
+
+		if (freerdp_interruptible_get_line(instance->context, &url, &size, stdin) < 0)
+			goto cleanup;
+
+		char* code = extract_authorization_code(url);
+	#endif
+	*/
 	if (!code)
 		goto cleanup;
 
 	if (winpr_asprintf(&token_request, &size,
-	                   "grant_type=authorization_code&code=%s&client_id=%s&scope=%s&redirect_uri=%"
-	                   "s&req_cnf=%s",
+	                   "grant_type=authorization_code&code=%s&client_id=%s&scope=%s&redirect_uri=%s&req_cnf=%s",
 	                   code, client_id, scope, redirect_uri, req_cnf) <= 0)
 		goto cleanup;
 
@@ -1074,6 +1120,7 @@ static BOOL client_cli_get_rdsaad_access_token(freerdp* instance, const char* sc
 
 cleanup:
 	free(redirect_uri);
+	free(code);
 	free(token_request);
 	free(url);
 	return rc && (*token != NULL);
@@ -1114,19 +1161,34 @@ static BOOL client_cli_get_avd_access_token(freerdp* instance, char** token)
 	               "https%%3A%%2F%%2F%s%%2F%s%%2Foauth2%%2Fnativeclient", base, tenantid);
 	if (!redirect_uri)
 		goto cleanup;
-
+	
 	const char* ep = freerdp_utils_aad_get_wellknown_string(instance->context,
 	                                                        AAD_WELLKNOWN_authorization_endpoint);
-	printf("Browse to: %s?client_id=%s&response_type="
-	       "code&scope=%s&redirect_uri=%s"
-	       "\n",
-	       ep, client_id, scope, redirect_uri);
-	printf("Paste redirect URL here: \n");
 
-	if (freerdp_interruptible_get_line(instance->context, &url, &size, stdin) < 0)
-		goto cleanup;
+	winpr_asprintf(&url, &size, "%s?client_id=%s&response_type=code&scope=%s&redirect_uri=%s",ep, client_id, scope, redirect_uri);
 
-	char* code = extract_authorization_code(url);
+	//#if defined(WITH_CLIENT_SDL2)
+		char* command = NULL;
+		size_t command_len = 0;
+
+		char* installpath = FREERDP_INSTALL_PREFIX;
+		winpr_asprintf(&url, &size, "%s?client_id=%s&response_type=code&scope=%s&redirect_uri=%s",ep, client_id, scope, redirect_uri);
+		winpr_asprintf(&command, &command_len, "%s/bin/webview_window \"FreeRDP AAD SSO\" \"%s\"", installpath, url);
+
+		char* code = webview_exec(command);
+	/*#else	
+		printf("Browse to: %s?client_id=%s&response_type="
+			"code&scope=%s&redirect_uri=%s"
+			"\n",
+			ep, client_id, scope, redirect_uri);
+		printf("Paste redirect URL here: \n");
+		
+		if (freerdp_interruptible_get_line(instance->context, &url, &size, stdin) < 0)
+			goto cleanup;
+
+		char* code = extract_authorization_code(url);
+	#endif
+	*/
 	if (!code)
 		goto cleanup;
 
@@ -1141,6 +1203,7 @@ static BOOL client_cli_get_avd_access_token(freerdp* instance, char** token)
 cleanup:
 	free(redirect_uri);
 	free(token_request);
+	free(code);
 	free(url);
 	return rc && (*token != NULL);
 }
@@ -1282,7 +1345,7 @@ SSIZE_T client_common_retry_dialog(freerdp* instance, const char* what, size_t c
 
 	WLog_INFO(TAG, "[%s] retry %" PRIuz "/%" PRIuz ", delaying %" PRIuz "ms before next attempt",
 	          what, current, max, delay);
-	return WINPR_ASSERTING_INT_CAST(SSIZE_T, delay);
+	return delay;
 }
 
 BOOL client_auto_reconnect(freerdp* instance)
@@ -1661,9 +1724,7 @@ BOOL freerdp_client_send_button_event(rdpClientContext* cctx, BOOL relative, UIN
 	    freerdp_settings_get_bool(cctx->context.settings, FreeRDP_HasRelativeMouseEvent);
 	if (relative && haveRelative)
 	{
-		return freerdp_input_send_rel_mouse_event(cctx->context.input, mflags,
-		                                          WINPR_ASSERTING_INT_CAST(int16_t, x),
-		                                          WINPR_ASSERTING_INT_CAST(int16_t, y));
+		return freerdp_input_send_rel_mouse_event(cctx->context.input, mflags, x, y);
 	}
 
 #if defined(CHANNEL_AINPUT_CLIENT)
@@ -1720,9 +1781,7 @@ BOOL freerdp_client_send_extended_button_event(rdpClientContext* cctx, BOOL rela
 	    freerdp_settings_get_bool(cctx->context.settings, FreeRDP_HasRelativeMouseEvent);
 	if (relative && haveRelative)
 	{
-		return freerdp_input_send_rel_mouse_event(cctx->context.input, mflags,
-		                                          WINPR_ASSERTING_INT_CAST(int16_t, x),
-		                                          WINPR_ASSERTING_INT_CAST(int16_t, y));
+		return freerdp_input_send_rel_mouse_event(cctx->context.input, mflags, x, y);
 	}
 
 #if defined(CHANNEL_AINPUT_CLIENT)
@@ -2087,20 +2146,17 @@ BOOL freerdp_client_handle_pen(rdpClientContext* cctx, UINT32 flags, INT32 devic
 	}
 	if ((flags & FREERDP_PEN_HAS_ROTATION) != 0)
 	{
-		const unsigned arg = va_arg(args, unsigned);
-		rotation = WINPR_ASSERTING_INT_CAST(UINT16, arg);
+		rotation = va_arg(args, unsigned);
 		fieldFlags |= RDPINPUT_PEN_CONTACT_ROTATION_PRESENT;
 	}
 	if ((flags & FREERDP_PEN_HAS_TILTX) != 0)
 	{
-		const int arg = va_arg(args, int);
-		tiltX = WINPR_ASSERTING_INT_CAST(INT16, arg);
+		tiltX = va_arg(args, int);
 		fieldFlags |= RDPINPUT_PEN_CONTACT_TILTX_PRESENT;
 	}
 	if ((flags & FREERDP_PEN_HAS_TILTY) != 0)
 	{
-		const int arg = va_arg(args, int);
-		tiltY = WINPR_ASSERTING_INT_CAST(INT16, arg);
+		tiltX = va_arg(args, int);
 		fieldFlags |= RDPINPUT_PEN_CONTACT_TILTY_PRESENT;
 	}
 	va_end(args);
